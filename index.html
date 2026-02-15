@@ -1,0 +1,1415 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tempo Tracker</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0d0d0d;
+        --surface: #141414;
+        --surface2: #1a1a1a;
+        --border: #252525;
+        --gold: #c8972a;
+        --gold-dim: #6b500f;
+        --gold-glow: rgba(200, 151, 42, 0.15);
+        --text: #e8e0d0;
+        --text-dim: #5a5248;
+        --text-mid: #888070;
+        --success: #4caf78;
+        --danger: #c84a4a;
+        --radius: 16px;
+      }
+
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        overflow-x: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.5;
+      }
+
+      /* ── Screens ── */
+      .screen {
+        display: none;
+        position: relative;
+        z-index: 1;
+        min-height: 100vh;
+      }
+      .screen.active {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 20px 32px;
+      }
+      #screenAdmin.active {
+        justify-content: flex-start;
+        padding-top: 80px;
+      }
+
+      /* ── Header ── */
+      .header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 28px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(13, 13, 13, 0.92);
+        backdrop-filter: blur(12px);
+        z-index: 10;
+      }
+      .logo {
+        font-family: "DM Serif Display", serif;
+        font-size: 1rem;
+        color: var(--gold);
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .user-badge {
+        font-size: 0.6rem;
+        color: var(--text-dim);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .btn-signout {
+        font-family: "DM Mono", monospace;
+        font-size: 0.58rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px 0;
+      }
+      .btn-signout:hover {
+        color: var(--text-mid);
+      }
+      .btn-admin {
+        font-family: "DM Mono", monospace;
+        font-size: 0.58rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--gold-dim);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px 0;
+      }
+      .btn-admin:hover {
+        color: var(--gold);
+      }
+
+      /* ── Card ── */
+      .card {
+        width: 100%;
+        max-width: 400px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 40px 32px 36px;
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+        transition: box-shadow 0.4s;
+      }
+      .card.active {
+        box-shadow:
+          0 0 60px var(--gold-glow),
+          0 24px 60px rgba(0, 0, 0, 0.5);
+      }
+
+      /* ── Login ── */
+      .login-title {
+        font-family: "DM Serif Display", serif;
+        font-size: 1.8rem;
+        color: var(--text);
+      }
+      .login-sub {
+        font-size: 0.65rem;
+        color: var(--text-dim);
+        letter-spacing: 0.1em;
+        margin-top: -16px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .field label {
+        font-size: 0.6rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+      .field input {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        font-size: 0.85rem;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .field input:focus {
+        border-color: var(--gold-dim);
+      }
+      .error-msg {
+        font-size: 0.62rem;
+        color: var(--danger);
+        letter-spacing: 0.08em;
+        min-height: 1em;
+      }
+
+      /* ── Practice labels ── */
+      .plan-label {
+        font-size: 0.58rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+      .exercise-block {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .exercise-name {
+        font-family: "DM Serif Display", serif;
+        font-size: 2rem;
+        line-height: 1.1;
+        color: var(--text);
+      }
+      .variation-label {
+        font-size: 0.68rem;
+        letter-spacing: 0.14em;
+        color: var(--gold);
+        text-transform: uppercase;
+        min-height: 1.2em;
+      }
+
+      /* ── BPM ── */
+      .bpm-block {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .bpm-number {
+        font-family: "DM Serif Display", serif;
+        font-size: 4.8rem;
+        color: var(--gold);
+        line-height: 1;
+      }
+      .bpm-unit {
+        font-size: 0.75rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--gold-dim);
+        padding-bottom: 10px;
+      }
+
+      /* ── Timer ── */
+      .timer-block {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      .timer-ring {
+        position: relative;
+        width: 120px;
+        height: 120px;
+      }
+      .timer-svg {
+        transform: rotate(-90deg);
+      }
+      .timer-track {
+        fill: none;
+        stroke: var(--border);
+        stroke-width: 5;
+      }
+      .timer-arc {
+        fill: none;
+        stroke: var(--gold);
+        stroke-width: 5;
+        stroke-linecap: round;
+        stroke-dasharray: 283;
+        stroke-dashoffset: 0;
+        transition:
+          stroke-dashoffset 1s linear,
+          stroke 0.4s;
+      }
+      .timer-arc.urgent {
+        stroke: var(--danger);
+      }
+      .timer-text {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.55rem;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+      }
+      .timer-label {
+        font-size: 0.57rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+
+      /* ── Panels ── */
+      .panel {
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .panel.active {
+        display: flex;
+      }
+
+      /* ── Buttons ── */
+      .btn {
+        width: 100%;
+        padding: 18px 24px;
+        border: none;
+        border-radius: var(--radius);
+        font-family: "DM Mono", monospace;
+        font-size: 0.72rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.18s;
+        font-weight: 500;
+      }
+      .btn-primary {
+        background: var(--gold);
+        color: #0a0a0a;
+      }
+      .btn-primary:hover {
+        background: #d9a832;
+        transform: translateY(-1px);
+        box-shadow: 0 8px 28px rgba(200, 151, 42, 0.3);
+      }
+      .btn-primary:active {
+        transform: translateY(0);
+      }
+      .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      .btn-success {
+        background: var(--success);
+        color: #0a0a0a;
+      }
+      .btn-success:hover {
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+      }
+      .btn-ghost {
+        background: transparent;
+        color: var(--text-mid);
+        border: 1px solid var(--border);
+      }
+      .btn-ghost:hover {
+        border-color: var(--text-mid);
+        color: var(--text);
+      }
+      .btn-row {
+        display: flex;
+        gap: 10px;
+      }
+      .btn-row .btn {
+        flex: 1;
+      }
+
+      /* ── Completion ── */
+      .completion-msg {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+      }
+      .completion-icon {
+        font-size: 2.2rem;
+      }
+      .completion-title {
+        font-family: "DM Serif Display", serif;
+        font-size: 1.5rem;
+        color: var(--gold);
+      }
+      .completion-sub {
+        font-size: 0.66rem;
+        color: var(--text-mid);
+        letter-spacing: 0.08em;
+        line-height: 1.7;
+      }
+
+      /* ── Progress bars ── */
+      .progress-group {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .progress-item {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .progress-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.58rem;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+      .track {
+        height: 4px;
+        background: var(--border);
+        border-radius: 99px;
+        overflow: hidden;
+      }
+      .fill {
+        height: 100%;
+        border-radius: 99px;
+        transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .fill-gold {
+        background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+      }
+      .fill-green {
+        background: linear-gradient(90deg, #2d7a50, var(--success));
+      }
+
+      /* ── Loading spinner ── */
+      .loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 2px solid var(--border);
+        border-top-color: var(--gold);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .loading-text {
+        font-size: 0.62rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+
+      /* ── Admin view ── */
+      .admin-wrap {
+        width: 100%;
+        max-width: 680px;
+        padding: 0 20px 48px;
+      }
+      .admin-title {
+        font-family: "DM Serif Display", serif;
+        font-size: 1.6rem;
+        color: var(--text);
+        margin-bottom: 8px;
+      }
+      .admin-sub {
+        font-size: 0.62rem;
+        color: var(--text-dim);
+        letter-spacing: 0.1em;
+        margin-bottom: 32px;
+      }
+      .learner-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 24px 28px;
+        margin-bottom: 16px;
+      }
+      .learner-name {
+        font-family: "DM Serif Display", serif;
+        font-size: 1.1rem;
+        color: var(--text);
+        margin-bottom: 4px;
+      }
+      .learner-plan {
+        font-size: 0.6rem;
+        color: var(--text-dim);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        margin-bottom: 18px;
+      }
+      .learner-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.7rem;
+      }
+      .learner-row:last-child {
+        border-bottom: none;
+      }
+      .learner-ex {
+        color: var(--text-mid);
+      }
+      .learner-ex strong {
+        color: var(--text);
+        display: block;
+        font-weight: 400;
+        margin-bottom: 2px;
+      }
+      .learner-bpm {
+        color: var(--gold);
+        font-family: "DM Serif Display", serif;
+        font-size: 1.1rem;
+      }
+      .learner-done {
+        color: var(--success);
+        font-size: 0.65rem;
+        letter-spacing: 0.1em;
+      }
+      .admin-empty {
+        font-size: 0.65rem;
+        color: var(--text-dim);
+        letter-spacing: 0.1em;
+        text-align: center;
+        padding: 40px 0;
+      }
+
+      /* ── Bell flash ── */
+      @keyframes bellFlash {
+        0%,
+        100% {
+          opacity: 0;
+        }
+        15%,
+        85% {
+          opacity: 1;
+        }
+      }
+      .bell-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(200, 151, 42, 0.06);
+        z-index: 50;
+        pointer-events: none;
+      }
+      .bell-overlay.ringing {
+        display: block;
+        animation: bellFlash 0.7s ease;
+      }
+      #confetti-canvas {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 100;
+      }
+
+      @media (max-width: 440px) {
+        .card {
+          padding: 32px 22px 28px;
+          gap: 24px;
+          border-radius: 20px;
+        }
+        .exercise-name {
+          font-size: 1.7rem;
+        }
+        .bpm-number {
+          font-size: 4rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="confetti-canvas"></canvas>
+    <div class="bell-overlay" id="bellOverlay"></div>
+
+    <header class="header">
+      <span class="logo">Tempo Tracker</span>
+      <div class="header-right">
+        <span class="user-badge" id="headerUser"></span>
+        <button
+          class="btn-admin"
+          id="btnAdminView"
+          onclick="showAdmin()"
+          style="display: none"
+        >
+          Admin
+        </button>
+        <button
+          class="btn-admin"
+          id="btnPracticeView"
+          onclick="showPractice()"
+          style="display: none"
+        >
+          ← Practice
+        </button>
+        <button
+          class="btn-signout"
+          id="btnSignout"
+          onclick="signOut()"
+          style="display: none"
+        >
+          Sign out
+        </button>
+      </div>
+    </header>
+
+    <!-- Login -->
+    <div class="screen active" id="screenLogin">
+      <div class="card">
+        <div class="login-title">Tempo Tracker</div>
+        <div class="login-sub">Sign in to continue</div>
+        <div class="field">
+          <label>Email</label>
+          <input
+            type="email"
+            id="loginEmail"
+            placeholder="you@example.com"
+            autocomplete="email"
+          />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input
+            type="password"
+            id="loginPassword"
+            placeholder="••••••••"
+            autocomplete="current-password"
+          />
+        </div>
+        <div class="error-msg" id="loginError"></div>
+        <button class="btn btn-primary" id="btnLogin" onclick="signIn()">
+          Sign In
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="screen" id="screenLoading">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">Loading your plan…</div>
+      </div>
+    </div>
+
+    <!-- Practice -->
+    <div class="screen" id="screenPractice">
+      <div class="card" id="mainCard">
+        <div class="plan-label" id="planLabel"></div>
+        <div class="exercise-block">
+          <div class="exercise-name" id="exerciseName"></div>
+          <div class="variation-label" id="variationLabel"></div>
+        </div>
+        <div class="bpm-block">
+          <div class="bpm-number" id="bpmDisplay">60</div>
+          <div class="bpm-unit">BPM</div>
+        </div>
+        <div class="timer-block">
+          <div class="timer-ring">
+            <svg
+              class="timer-svg"
+              width="120"
+              height="120"
+              viewBox="0 0 100 100"
+            >
+              <circle class="timer-track" cx="50" cy="50" r="45" />
+              <circle class="timer-arc" id="timerArc" cx="50" cy="50" r="45" />
+            </svg>
+            <div class="timer-text" id="timerText">2:00</div>
+          </div>
+          <div class="timer-label">Session Timer</div>
+        </div>
+
+        <div class="panel active" id="panelIdle">
+          <button class="btn btn-primary" onclick="startSession()">
+            ▶ Start
+          </button>
+        </div>
+        <div class="panel" id="panelActive">
+          <button class="btn btn-ghost" onclick="stopSession()">◼ Stop</button>
+        </div>
+        <div class="panel" id="panelComplete">
+          <div class="completion-msg">
+            <div class="completion-icon">🎯</div>
+            <div class="completion-title">Time's Up!</div>
+            <div class="completion-sub">
+              Did you nail it at <span id="nailBpm">60</span> BPM?
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-success" onclick="markComplete()">
+              ✓ Nailed It
+            </button>
+            <button class="btn btn-ghost" onclick="retrySession()">
+              ↺ Not Quite
+            </button>
+          </div>
+        </div>
+        <div class="panel" id="panelVariationDone">
+          <div class="completion-msg">
+            <div class="completion-icon">⭐</div>
+            <div class="completion-title" id="varDoneTitle"></div>
+            <div class="completion-sub" id="varDoneSub"></div>
+          </div>
+          <button class="btn btn-primary" onclick="nextVariation()">
+            → Continue
+          </button>
+        </div>
+        <div class="panel" id="panelExDone">
+          <div class="completion-msg">
+            <div class="completion-icon">🏆</div>
+            <div class="completion-title">Exercise Complete!</div>
+            <div class="completion-sub" id="exDoneMsg"></div>
+          </div>
+          <button class="btn btn-primary" onclick="advanceToNext()">
+            → Next Exercise
+          </button>
+        </div>
+        <div class="panel" id="panelAllDone">
+          <div class="completion-msg">
+            <div class="completion-icon">✨</div>
+            <div class="completion-title">Plan Complete!</div>
+            <div class="completion-sub">
+              You've finished every exercise. Incredible work.
+            </div>
+          </div>
+        </div>
+
+        <div class="progress-group">
+          <div class="progress-item">
+            <div class="progress-meta">
+              <span>Exercise Progress</span><span id="exProgressPct">0%</span>
+            </div>
+            <div class="track">
+              <div
+                class="fill fill-gold"
+                id="exProgressFill"
+                style="width: 0%"
+              ></div>
+            </div>
+          </div>
+          <div class="progress-item">
+            <div class="progress-meta">
+              <span>Overall Plan</span><span id="opPercent">0%</span>
+            </div>
+            <div class="track">
+              <div class="fill fill-green" id="opFill" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin -->
+    <div class="screen" id="screenAdmin">
+      <div class="admin-wrap">
+        <div class="admin-title">Student Progress</div>
+        <div class="admin-sub">All learners · read-only overview</div>
+        <div id="adminContent"><div class="admin-empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <script>
+      // ── Supabase ──────────────────────────────────────────────────────────────────
+      const SUPABASE_URL = "https://tvhivykuzfrymukxiumt.supabase.co";
+      const SUPABASE_KEY =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2aGl2eWt1emZyeW11a3hpdW10Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNzYyMTAsImV4cCI6MjA4Njc1MjIxMH0.tMRHUN3yUR32iVlMPbjXHt0qmwpxEq_nd41YpDYVPoA";
+      const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      // ── Plan definition ───────────────────────────────────────────────────────────
+      // This mirrors what's in the DB. In a future iteration the app will load this
+      // dynamically from the plans/exercises tables.
+      const PLAN = {
+        name: "Alfred's Piano Book 1",
+        exercises: [
+          {
+            name: "C Major Scale",
+            minBpm: 60,
+            maxBpm: 120,
+            variations: ["Right Hand", "Left Hand", "Both Hands"],
+          },
+          {
+            name: "G Major Scale",
+            minBpm: 60,
+            maxBpm: 120,
+            variations: ["Right Hand", "Left Hand", "Both Hands"],
+          },
+          { name: "Exercise 3", minBpm: 60, maxBpm: 100, variations: [] },
+          {
+            name: "Chord Study",
+            minBpm: 60,
+            maxBpm: 120,
+            variations: ["Root Position", "1st Inversion", "2nd Inversion"],
+          },
+          {
+            name: "Finger Independence",
+            minBpm: 60,
+            maxBpm: 120,
+            variations: ["Right Hand", "Left Hand", "Both Hands"],
+          },
+        ],
+      };
+
+      const SESSION_DURATION = 120;
+      const BPM_STEP = 5;
+
+      // Flatten to ordered entries
+      function buildEntries() {
+        const list = [];
+        PLAN.exercises.forEach((ex, exIdx) => {
+          if (ex.variations.length === 0) {
+            list.push({
+              exIdx,
+              variation: null,
+              currentBpm: ex.minBpm,
+              complete: false,
+              dbId: null,
+            });
+          } else {
+            ex.variations.forEach((v) => {
+              list.push({
+                exIdx,
+                variation: v,
+                currentBpm: ex.minBpm,
+                complete: false,
+                dbId: null,
+              });
+            });
+          }
+        });
+        return list;
+      }
+
+      // ── App state ─────────────────────────────────────────────────────────────────
+      let entries = buildEntries();
+      let entryIdx = 0;
+      let currentUser = null;
+      let isAdmin = false;
+      let dbExerciseIds = {}; // name -> uuid from DB
+
+      // Session
+      let timeLeft = SESSION_DURATION;
+      let timerInterval = null;
+      let metronomeInterval = null;
+      let audioCtx = null;
+
+      // ── Auth ──────────────────────────────────────────────────────────────────────
+      async function signIn() {
+        const email = document.getElementById("loginEmail").value.trim();
+        const password = document.getElementById("loginPassword").value;
+        const btn = document.getElementById("btnLogin");
+        const errEl = document.getElementById("loginError");
+        errEl.textContent = "";
+        btn.disabled = true;
+        btn.textContent = "Signing in…";
+
+        const { data, error } = await sb.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) {
+          errEl.textContent = error.message;
+          btn.disabled = false;
+          btn.textContent = "Sign In";
+          return;
+        }
+        await onSignedIn(data.user);
+      }
+
+      async function signOut() {
+        await sb.auth.signOut();
+        currentUser = null;
+        isAdmin = false;
+        document.getElementById("btnSignout").style.display = "none";
+        document.getElementById("btnAdminView").style.display = "none";
+        document.getElementById("btnPracticeView").style.display = "none";
+        document.getElementById("headerUser").textContent = "";
+        showScreen("login");
+      }
+
+      async function onSignedIn(user) {
+        currentUser = user;
+        showScreen("loading");
+        setLoadingText("Loading your plan…");
+
+        // Fetch profile
+        const { data: profile } = await sb
+          .from("profiles")
+          .select("display_name, is_admin")
+          .eq("id", user.id)
+          .single();
+
+        if (profile) {
+          isAdmin = profile.is_admin;
+          document.getElementById("headerUser").textContent =
+            profile.display_name;
+        }
+
+        document.getElementById("btnSignout").style.display = "inline";
+        if (isAdmin)
+          document.getElementById("btnAdminView").style.display = "inline";
+
+        await loadProgress();
+        renderScreen();
+        updateTimerDisplay();
+        setPanel("idle");
+        showScreen("practice");
+      }
+
+      // ── Data loading ──────────────────────────────────────────────────────────────
+      async function loadProgress() {
+        // 1. Ensure exercises exist in DB for this plan (upsert by name)
+        // First find or create the plan
+        let planId = null;
+        const { data: existingPlan } = await sb
+          .from("plans")
+          .select("id")
+          .eq("owner_id", currentUser.id)
+          .eq("name", PLAN.name)
+          .maybeSingle();
+
+        if (existingPlan) {
+          planId = existingPlan.id;
+        } else {
+          const { data: newPlan } = await sb
+            .from("plans")
+            .insert({ name: PLAN.name, owner_id: currentUser.id })
+            .select("id")
+            .single();
+          planId = newPlan.id;
+        }
+
+        // Upsert exercises
+        for (let i = 0; i < PLAN.exercises.length; i++) {
+          const ex = PLAN.exercises[i];
+          const { data: existingEx } = await sb
+            .from("exercises")
+            .select("id")
+            .eq("plan_id", planId)
+            .eq("name", ex.name)
+            .maybeSingle();
+
+          if (existingEx) {
+            dbExerciseIds[ex.name] = existingEx.id;
+          } else {
+            const { data: newEx } = await sb
+              .from("exercises")
+              .insert({
+                plan_id: planId,
+                name: ex.name,
+                position: i,
+                min_bpm: ex.minBpm,
+                max_bpm: ex.maxBpm,
+                variations: ex.variations,
+              })
+              .select("id")
+              .single();
+            dbExerciseIds[ex.name] = newEx.id;
+          }
+        }
+
+        // 2. Load existing progress rows
+        const { data: progressRows } = await sb
+          .from("progress")
+          .select("*")
+          .eq("user_id", currentUser.id);
+
+        // 3. Merge into local entries
+        entries = buildEntries();
+        if (progressRows) {
+          progressRows.forEach((row) => {
+            const exName = Object.keys(dbExerciseIds).find(
+              (k) => dbExerciseIds[k] === row.exercise_id,
+            );
+            if (!exName) return;
+            const match = entries.find((e) => {
+              const ex = PLAN.exercises[e.exIdx];
+              return (
+                ex.name === exName &&
+                (e.variation === row.variation ||
+                  (!e.variation && !row.variation))
+              );
+            });
+            if (match) {
+              match.currentBpm = row.current_bpm;
+              match.complete = row.complete;
+              match.dbId = row.id;
+            }
+          });
+        }
+
+        // 4. Find first incomplete entry
+        entryIdx = entries.findIndex((e) => !e.complete);
+        if (entryIdx === -1) entryIdx = entries.length - 1;
+      }
+
+      async function saveProgress(entry) {
+        const ex = PLAN.exercises[entry.exIdx];
+        const exerciseId = dbExerciseIds[ex.name];
+        if (!exerciseId) return;
+
+        const payload = {
+          user_id: currentUser.id,
+          exercise_id: exerciseId,
+          variation: entry.variation,
+          current_bpm: entry.currentBpm,
+          complete: entry.complete,
+          last_practiced_at: new Date().toISOString(),
+        };
+
+        if (entry.dbId) {
+          await sb.from("progress").update(payload).eq("id", entry.dbId);
+        } else {
+          const { data } = await sb
+            .from("progress")
+            .insert(payload)
+            .select("id")
+            .single();
+          if (data) entry.dbId = data.id;
+        }
+      }
+
+      // ── Render ────────────────────────────────────────────────────────────────────
+      const cur = () => entries[entryIdx];
+      const curEx = () => PLAN.exercises[cur().exIdx];
+
+      function renderScreen() {
+        const e = cur();
+        const ex = curEx();
+        document.getElementById("planLabel").textContent = PLAN.name;
+        document.getElementById("exerciseName").textContent = ex.name;
+        document.getElementById("variationLabel").textContent =
+          e.variation || "";
+        document.getElementById("bpmDisplay").textContent = e.currentBpm;
+        document.getElementById("nailBpm").textContent = e.currentBpm;
+        updateProgress();
+      }
+
+      function updateProgress() {
+        const e = cur();
+        const ex = curEx();
+        const totalSteps = (ex.maxBpm - ex.minBpm) / BPM_STEP;
+        const doneSteps = (e.currentBpm - ex.minBpm) / BPM_STEP;
+        const exPct =
+          totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : 0;
+        document.getElementById("exProgressPct").textContent = exPct + "%";
+        document.getElementById("exProgressFill").style.width = exPct + "%";
+
+        const total = entries.length;
+        const completed = entries.filter((e2) => e2.complete).length;
+        const partial = doneSteps / (totalSteps || 1) / total;
+        const opPct = Math.min(
+          100,
+          Math.round((completed / total + partial) * 100),
+        );
+        document.getElementById("opPercent").textContent = opPct + "%";
+        document.getElementById("opFill").style.width = opPct + "%";
+      }
+
+      // ── Timer ─────────────────────────────────────────────────────────────────────
+      function startTimer() {
+        timeLeft = SESSION_DURATION;
+        updateTimerDisplay();
+        timerInterval = setInterval(() => {
+          timeLeft--;
+          updateTimerDisplay();
+          if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            onTimerEnd();
+          }
+        }, 1000);
+      }
+
+      function updateTimerDisplay() {
+        const m = Math.floor(timeLeft / 60);
+        const s = timeLeft % 60;
+        document.getElementById("timerText").textContent =
+          `${m}:${s.toString().padStart(2, "0")}`;
+        const arc = document.getElementById("timerArc");
+        arc.style.strokeDashoffset = 283 * (1 - timeLeft / SESSION_DURATION);
+        arc.classList.toggle("urgent", timeLeft <= 15);
+      }
+
+      function onTimerEnd() {
+        stopMetronome();
+        document.getElementById("mainCard").classList.remove("active");
+        ringBell();
+        setPanel("complete");
+      }
+
+      // ── Bell ──────────────────────────────────────────────────────────────────────
+      function ringBell() {
+        const overlay = document.getElementById("bellOverlay");
+        overlay.classList.remove("ringing");
+        void overlay.offsetWidth;
+        overlay.classList.add("ringing");
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        playTone(ctx, 880, 0, 0.5, "sine");
+        playTone(ctx, 660, 0.05, 0.4, "sine");
+        playTone(ctx, 440, 0.1, 0.5, "sine");
+        playTone(ctx, 880, 0.2, 1.4, "sine", 0.12);
+      }
+      function playTone(ctx, freq, delay, gain, type, endGain = 0) {
+        const osc = ctx.createOscillator(),
+          g = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+        g.gain.setValueAtTime(gain, ctx.currentTime + delay);
+        g.gain.exponentialRampToValueAtTime(
+          Math.max(endGain, 0.001),
+          ctx.currentTime + delay + 1.8,
+        );
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 2);
+      }
+
+      // ── Metronome ─────────────────────────────────────────────────────────────────
+      function startMetronome() {
+        if (!audioCtx)
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const interval = (60 / cur().currentBpm) * 1000;
+        playClick();
+        metronomeInterval = setInterval(playClick, interval);
+      }
+      function stopMetronome() {
+        if (metronomeInterval) {
+          clearInterval(metronomeInterval);
+          metronomeInterval = null;
+        }
+      }
+      function playClick() {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator(),
+          g = audioCtx.createGain();
+        osc.type = "square";
+        osc.frequency.value = 1000;
+        g.gain.setValueAtTime(0.14, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.06);
+      }
+
+      // ── Session controls ──────────────────────────────────────────────────────────
+      function startSession() {
+        document.getElementById("mainCard").classList.add("active");
+        setPanel("active");
+        startMetronome();
+        startTimer();
+      }
+      function stopSession() {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        stopMetronome();
+        timeLeft = SESSION_DURATION;
+        updateTimerDisplay();
+        document.getElementById("mainCard").classList.remove("active");
+        setPanel("idle");
+      }
+      function retrySession() {
+        timeLeft = SESSION_DURATION;
+        updateTimerDisplay();
+        setPanel("idle");
+      }
+
+      async function markComplete() {
+        const e = cur();
+        const ex = curEx();
+
+        if (e.currentBpm >= ex.maxBpm) {
+          e.complete = true;
+          await saveProgress(e);
+          launchConfetti();
+          updateProgress();
+
+          const nextIdx = entryIdx + 1;
+          if (nextIdx >= entries.length) {
+            setPanel("allDone");
+            return;
+          }
+
+          const nextEntry = entries[nextIdx];
+          const sameEx = nextEntry.exIdx === e.exIdx;
+
+          if (sameEx && nextEntry.variation) {
+            document.getElementById("varDoneTitle").textContent =
+              `${e.variation} — done!`;
+            document.getElementById("varDoneSub").textContent =
+              `Up next: ${nextEntry.variation}`;
+            setPanel("variationDone");
+          } else {
+            document.getElementById("exDoneMsg").textContent =
+              `"${ex.name}" mastered — 60 to ${ex.maxBpm} BPM`;
+            setPanel("exDone");
+          }
+          return;
+        }
+
+        e.currentBpm = Math.min(e.currentBpm + BPM_STEP, ex.maxBpm);
+        await saveProgress(e);
+        launchConfetti();
+        renderScreen();
+        timeLeft = SESSION_DURATION;
+        updateTimerDisplay();
+        setPanel("idle");
+      }
+
+      async function nextVariation() {
+        entryIdx++;
+        renderScreen();
+        timeLeft = SESSION_DURATION;
+        updateTimerDisplay();
+        setPanel("idle");
+      }
+      async function advanceToNext() {
+        entryIdx++;
+        if (entryIdx >= entries.length) {
+          setPanel("allDone");
+          return;
+        }
+        renderScreen();
+        timeLeft = SESSION_DURATION;
+        updateTimerDisplay();
+        setPanel("idle");
+      }
+
+      // ── Panels ────────────────────────────────────────────────────────────────────
+      const ALL_PANELS = [
+        "Idle",
+        "Active",
+        "Complete",
+        "VariationDone",
+        "ExDone",
+        "AllDone",
+      ];
+      function setPanel(name) {
+        const key = name.charAt(0).toUpperCase() + name.slice(1);
+        ALL_PANELS.forEach((p) =>
+          document
+            .getElementById("panel" + p)
+            .classList.toggle("active", p === key),
+        );
+      }
+
+      // ── Screens ───────────────────────────────────────────────────────────────────
+      function showScreen(name) {
+        document
+          .querySelectorAll(".screen")
+          .forEach((s) => s.classList.remove("active"));
+        document
+          .getElementById(
+            "screen" + name.charAt(0).toUpperCase() + name.slice(1),
+          )
+          .classList.add("active");
+      }
+      function setLoadingText(t) {
+        document.getElementById("loadingText").textContent = t;
+      }
+
+      function showAdmin() {
+        document.getElementById("btnAdminView").style.display = "none";
+        document.getElementById("btnPracticeView").style.display = "inline";
+        showScreen("admin");
+        loadAdminData();
+      }
+      function showPractice() {
+        document.getElementById("btnAdminView").style.display = "inline";
+        document.getElementById("btnPracticeView").style.display = "none";
+        showScreen("practice");
+      }
+
+      // ── Admin ─────────────────────────────────────────────────────────────────────
+      async function loadAdminData() {
+        const el = document.getElementById("adminContent");
+        el.innerHTML = '<div class="admin-empty">Loading…</div>';
+
+        // Get all profiles except self
+        const { data: profiles } = await sb
+          .from("profiles")
+          .select("id, display_name")
+          .eq("is_admin", false);
+
+        if (!profiles || profiles.length === 0) {
+          el.innerHTML =
+            '<div class="admin-empty">No learners found yet.</div>';
+          return;
+        }
+
+        // Get all progress rows (admin RLS policy allows this)
+        const { data: allProgress } = await sb
+          .from("progress")
+          .select("*, exercises(name, min_bpm, max_bpm, variations)");
+
+        el.innerHTML = "";
+
+        profiles.forEach((profile) => {
+          const userProgress = (allProgress || []).filter(
+            (p) => p.user_id === profile.id,
+          );
+
+          const card = document.createElement("div");
+          card.className = "learner-card";
+
+          let html = `
+      <div class="learner-name">${profile.display_name}</div>
+      <div class="learner-plan">Alfred's Piano Book 1</div>
+    `;
+
+          if (userProgress.length === 0) {
+            html += `<div class="learner-row"><span class="learner-ex">No practice recorded yet</span></div>`;
+          } else {
+            userProgress.forEach((row) => {
+              const ex = row.exercises;
+              if (!ex) return;
+              const label =
+                ex.name + (row.variation ? ` · ${row.variation}` : "");
+              const pct = Math.round(
+                ((row.current_bpm - ex.min_bpm) / (ex.max_bpm - ex.min_bpm)) *
+                  100,
+              );
+              html += `
+          <div class="learner-row">
+            <span class="learner-ex">
+              <strong>${label}</strong>
+              ${pct}% complete
+            </span>
+            <span>${
+              row.complete
+                ? '<span class="learner-done">✓ Mastered</span>'
+                : `<span class="learner-bpm">${row.current_bpm}</span><span style="font-size:0.6rem;color:var(--text-dim);margin-left:4px">BPM</span>`
+            }</span>
+          </div>
+        `;
+            });
+          }
+
+          card.innerHTML = html;
+          el.appendChild(card);
+        });
+      }
+
+      // ── Confetti ──────────────────────────────────────────────────────────────────
+      let confettiFrame = null;
+      function launchConfetti() {
+        const canvas = document.getElementById("confetti-canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const colors = [
+          "#c8972a",
+          "#e8c060",
+          "#4caf78",
+          "#e87040",
+          "#ffffff",
+          "#a0d0ff",
+        ];
+        const pieces = Array.from({ length: 90 }, () => ({
+          x: Math.random() * canvas.width,
+          y: -10 - Math.random() * 60,
+          r: 3 + Math.random() * 5,
+          d: 1.5 + Math.random() * 3,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          tilt: Math.random() * 10 - 5,
+          tiltSpeed: 0.07 + Math.random() * 0.2,
+          angle: Math.random() * Math.PI * 2,
+        }));
+        if (confettiFrame) cancelAnimationFrame(confettiFrame);
+        function draw() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          let alive = 0;
+          pieces.forEach((p) => {
+            if (p.y > canvas.height + 20) return;
+            alive++;
+            p.y += p.d;
+            p.x += Math.sin(p.angle) * 1.1;
+            p.angle += 0.04;
+            p.tilt += p.tiltSpeed;
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, 1 - p.y / (canvas.height * 0.88));
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.ellipse(p.x, p.y, p.r, p.r * 0.4, p.tilt, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          });
+          if (alive > 0) confettiFrame = requestAnimationFrame(draw);
+          else ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        draw();
+      }
+
+      // ── Boot ──────────────────────────────────────────────────────────────────────
+      (async () => {
+        // Check for existing session
+        const {
+          data: { session },
+        } = await sb.auth.getSession();
+        if (session) {
+          await onSignedIn(session.user);
+        }
+
+        // Listen for auth changes
+        sb.auth.onAuthStateChange(async (event, session) => {
+          if (event === "SIGNED_IN" && session) {
+            // handled by signIn()
+          } else if (event === "SIGNED_OUT") {
+            showScreen("login");
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>
