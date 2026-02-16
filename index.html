@@ -202,6 +202,11 @@
         text-transform: uppercase;
         color: var(--text-dim);
       }
+      .greeting-label {
+        font-family: "DM Serif Display", serif;
+        font-size: 1rem;
+        color: var(--text-mid);
+      }
       .exercise-block {
         display: flex;
         flex-direction: column;
@@ -615,6 +620,7 @@
             id="loginEmail"
             placeholder="you@example.com"
             autocomplete="email"
+            onkeydown="if (event.key === 'Enter') signIn();"
           />
         </div>
         <div class="field">
@@ -624,6 +630,7 @@
             id="loginPassword"
             placeholder="••••••••"
             autocomplete="current-password"
+            onkeydown="if (event.key === 'Enter') signIn();"
           />
         </div>
         <div class="error-msg" id="loginError"></div>
@@ -644,6 +651,7 @@
     <!-- Practice -->
     <div class="screen" id="screenPractice">
       <div class="card" id="mainCard">
+        <div class="greeting-label" id="greetingLabel"></div>
         <div class="plan-label" id="planLabel"></div>
         <div class="exercise-block">
           <div class="exercise-name" id="exerciseName"></div>
@@ -834,7 +842,8 @@
       let entryIdx = 0;
       let currentUser = null;
       let isAdmin = false;
-      let dbExerciseIds = {}; // name -> uuid from DB
+      let profile = null;
+      let dbExerciseIds = {};
 
       // Session
       let timeLeft = SESSION_DURATION;
@@ -869,10 +878,20 @@
         await sb.auth.signOut();
         currentUser = null;
         isAdmin = false;
+        profile = null;
+        entries = buildEntries();
+        entryIdx = 0;
         document.getElementById("btnSignout").style.display = "none";
         document.getElementById("btnAdminView").style.display = "none";
         document.getElementById("btnPracticeView").style.display = "none";
         document.getElementById("headerUser").textContent = "";
+        // Reset login form fully so user can sign back in without reloading
+        const btn = document.getElementById("btnLogin");
+        btn.disabled = false;
+        btn.textContent = "Sign In";
+        document.getElementById("loginEmail").value = "";
+        document.getElementById("loginPassword").value = "";
+        document.getElementById("loginError").textContent = "";
         showScreen("login");
       }
 
@@ -882,13 +901,14 @@
         setLoadingText("Loading your plan…");
 
         // Fetch profile
-        const { data: profile } = await sb
+        const { data: fetchedProfile } = await sb
           .from("profiles")
           .select("display_name, is_admin")
           .eq("id", user.id)
           .single();
 
-        if (profile) {
+        if (fetchedProfile) {
+          profile = fetchedProfile;
           isAdmin = profile.is_admin;
           document.getElementById("headerUser").textContent =
             profile.display_name;
@@ -907,44 +927,37 @@
 
       // ── Data loading ──────────────────────────────────────────────────────────────
       async function loadProgress() {
-        // 1. Ensure exercises exist in DB for this plan (upsert by name)
-        // First find or create the plan
-        let planId = null;
-        const { data: existingPlan } = await sb
-          .from("plans")
-          .select("id")
-          .eq("owner_id", currentUser.id)
-          .eq("name", PLAN.name)
-          .maybeSingle();
+        dbExerciseIds = {};
 
-        if (existingPlan) {
-          planId = existingPlan.id;
+        // Look for exercises owned by any admin plan with this name
+        // (shared content — admin seeds it, all users reference it)
+        const { data: existingExercises } = await sb
+          .from("exercises")
+          .select("id, name")
+          .in(
+            "name",
+            PLAN.exercises.map((e) => e.name),
+          );
+
+        if (existingExercises && existingExercises.length > 0) {
+          // Use existing shared exercises
+          existingExercises.forEach((ex) => {
+            dbExerciseIds[ex.name] = ex.id;
+          });
         } else {
+          // First-ever load: seed the plan + exercises once (admin creates them)
           const { data: newPlan } = await sb
             .from("plans")
             .insert({ name: PLAN.name, owner_id: currentUser.id })
             .select("id")
             .single();
-          planId = newPlan.id;
-        }
 
-        // Upsert exercises
-        for (let i = 0; i < PLAN.exercises.length; i++) {
-          const ex = PLAN.exercises[i];
-          const { data: existingEx } = await sb
-            .from("exercises")
-            .select("id")
-            .eq("plan_id", planId)
-            .eq("name", ex.name)
-            .maybeSingle();
-
-          if (existingEx) {
-            dbExerciseIds[ex.name] = existingEx.id;
-          } else {
+          for (let i = 0; i < PLAN.exercises.length; i++) {
+            const ex = PLAN.exercises[i];
             const { data: newEx } = await sb
               .from("exercises")
               .insert({
-                plan_id: planId,
+                plan_id: newPlan.id,
                 name: ex.name,
                 position: i,
                 min_bpm: ex.minBpm,
@@ -953,17 +966,17 @@
               })
               .select("id")
               .single();
-            dbExerciseIds[ex.name] = newEx.id;
+            if (newEx) dbExerciseIds[ex.name] = newEx.id;
           }
         }
 
-        // 2. Load existing progress rows
+        // Load this user's progress rows
         const { data: progressRows } = await sb
           .from("progress")
           .select("*")
           .eq("user_id", currentUser.id);
 
-        // 3. Merge into local entries
+        // Merge into local entries
         entries = buildEntries();
         if (progressRows) {
           progressRows.forEach((row) => {
@@ -987,7 +1000,7 @@
           });
         }
 
-        // 4. Find first incomplete entry
+        // Start at first incomplete entry
         entryIdx = entries.findIndex((e) => !e.complete);
         if (entryIdx === -1) entryIdx = entries.length - 1;
       }
@@ -1026,6 +1039,9 @@
         const e = cur();
         const ex = curEx();
         document.getElementById("planLabel").textContent = PLAN.name;
+        document.getElementById("greetingLabel").textContent = profile
+          ? `Hey, ${profile.display_name}`
+          : "";
         document.getElementById("exerciseName").textContent = ex.name;
         document.getElementById("variationLabel").textContent =
           e.variation || "";
